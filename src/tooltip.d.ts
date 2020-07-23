@@ -69,7 +69,7 @@ declare module 'react-native-walkthrough-tooltip' {
     isVisible?: boolean;
 
     // Callback fired when the user taps the tooltip background overlay
-    onClose?: (event: GestureResponderEvent) => void;
+    onClose?: (key: any) => void;
 
     /**
      * Where to position the tooltip - options: top, bottom, left, right, center.

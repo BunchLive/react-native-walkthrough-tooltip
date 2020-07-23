@@ -1,4 +1,5 @@
 import React, { Component } from 'react';
+
 import PropTypes from 'prop-types';
 import {
   Dimensions,
@@ -6,6 +7,7 @@ import {
   Modal,
   TouchableWithoutFeedback,
   View,
+  Animated,
 } from 'react-native';
 import rfcIsEqual from 'react-fast-compare';
 import {
@@ -32,10 +34,10 @@ const DEFAULT_DISPLAY_INSETS = {
   right: 24,
 };
 
-const computeDisplayInsets = insetsFromProps =>
+const computeDisplayInsets = (insetsFromProps) =>
   Object.assign({}, DEFAULT_DISPLAY_INSETS, insetsFromProps);
 
-const invertPlacement = placement => {
+const invertPlacement = (placement) => {
   switch (placement) {
     case 'top':
       return 'bottom';
@@ -73,7 +75,7 @@ class Tooltip extends Component {
     useInteractionManager: false,
     useReactNativeModal: true,
     topAdjustment: 0,
-    accessible: true
+    accessible: true,
   };
 
   static propTypes = {
@@ -112,6 +114,8 @@ class Tooltip extends Component {
 
     this.isMeasuringChild = false;
 
+    this.isUnmounting = false;
+
     this.childWrapper = React.createRef();
     this.state = {
       // no need to wait for interactions if not visible initially
@@ -122,6 +126,7 @@ class Tooltip extends Component {
       tooltipOrigin: new Point(0, 0),
       childRect: new Rect(0, 0, 0, 0),
       displayInsets: computeDisplayInsets(props.displayInsets),
+      animValue: new Animated.Value(0),
       // if we have no children, and place the tooltip at the "top" we want it to
       // behave like placement "bottom", i.e. display below the top of the screen
       placement:
@@ -146,11 +151,29 @@ class Tooltip extends Component {
     const becameVisible = isVisible && !prevProps.isVisible;
     const insetsChanged = !rfcIsEqual(prevState.displayInsets, displayInsets);
 
+    if (!this.state.waitingForInteractions) {
+      if (
+        prevProps.isVisible !== isVisible ||
+        prevState.waitingForInteractions
+      ) {
+        this.animate(isVisible);
+      }
+    }
+
     if (contentChanged || placementChanged || becameVisible || insetsChanged) {
       setTimeout(() => {
         this.measureChildRect();
       });
     }
+  }
+
+  shouldComponentUpdate(nextProps) {
+    if (nextProps.isVisible !== this.props.isVisible) {
+      if (!nextProps.isVisible) {
+        this.isUnmounting = true;
+      }
+    }
+    return true;
   }
 
   componentWillUnmount() {
@@ -189,7 +212,7 @@ class Tooltip extends Component {
     return null;
   }
 
-  updateWindowDims = dims => {
+  updateWindowDims = (dims) => {
     this.setState(
       {
         windowDims: dims.window,
@@ -218,7 +241,7 @@ class Tooltip extends Component {
     );
   };
 
-  measureContent = e => {
+  measureContent = (e) => {
     const { width, height } = e.nativeEvent.layout;
     const contentSize = new Size(width, height);
     this.setState({ contentSize }, () => {
@@ -226,7 +249,7 @@ class Tooltip extends Component {
     });
   };
 
-  onChildMeasurementComplete = rect => {
+  onChildMeasurementComplete = (rect) => {
     this.setState(
       {
         childRect: rect,
@@ -253,7 +276,7 @@ class Tooltip extends Component {
             (x, y, width, height, pageX, pageY) => {
               const childRect = new Rect(pageX, pageY, width, height);
               if (
-                Object.values(childRect).every(value => value !== undefined)
+                Object.values(childRect).every((value) => value !== undefined)
               ) {
                 this.onChildMeasurementComplete(childRect);
               } else {
@@ -334,6 +357,17 @@ class Tooltip extends Component {
     });
   };
 
+  animate = (visible) => {
+    Animated.timing(this.state.animValue, {
+      toValue: visible ? 1 : 0,
+      duration: 300,
+      useNativeDriver: true,
+    }).start(() => {
+      this.isUnmounting = false;
+      this.forceUpdate();
+    });
+  };
+
   renderChildInTooltip = () => {
     const { height, width, x, y } = this.state.childRect;
 
@@ -371,6 +405,8 @@ class Tooltip extends Component {
       arrowSize: this.props.arrowSize,
       displayInsets: this.state.displayInsets,
       measurementsFinished: this.state.measurementsFinished,
+      isMounted: this.props.isVisible || this.isUnmounting,
+      waitingForInteractions: this.state.waitingForInteractions,
       ownProps: { ...this.props },
       placement: this.state.placement,
       tooltipOrigin: this.state.tooltipOrigin,
@@ -386,20 +422,41 @@ class Tooltip extends Component {
     };
 
     return (
-      <TouchableWithoutFeedback onPress={this.props.onClose} accessible={this.props.accessible}>
+      <TouchableWithoutFeedback
+        onPress={this.props.onClose}
+        accessible={this.props.accessible}
+      >
         <View style={generatedStyles.containerStyle}>
           <View style={[generatedStyles.backgroundStyle]}>
-            <View style={generatedStyles.tooltipStyle}>
+            <Animated.View
+              style={[
+                generatedStyles.tooltipStyle,
+                {
+                  opacity: this.state.animValue,
+                  transform: [
+                    {
+                      translateY: this.state.animValue.interpolate({
+                        inputRange: [0, 1],
+                        outputRange: [20, 0],
+                      }),
+                    },
+                  ],
+                },
+              ]}
+            >
               {hasChildren ? <View style={generatedStyles.arrowStyle} /> : null}
               <View
                 onLayout={this.measureContent}
                 style={generatedStyles.contentStyle}
               >
-                <TouchableWithoutFeedback onPress={onPressContent} accessible={this.props.accessible}>
+                <TouchableWithoutFeedback
+                  onPress={onPressContent}
+                  accessible={this.props.accessible}
+                >
                   {this.props.content}
                 </TouchableWithoutFeedback>
               </View>
-            </View>
+            </Animated.View>
           </View>
           {hasChildren && this.props.showChildInTooltip
             ? this.renderChildInTooltip()
@@ -413,7 +470,8 @@ class Tooltip extends Component {
     const { children, isVisible, useReactNativeModal } = this.props;
 
     const hasChildren = React.Children.count(children) > 0;
-    const showTooltip = isVisible && !this.state.waitingForInteractions;
+    const showTooltip =
+      (isVisible || this.isUnmounting) && !this.state.waitingForInteractions;
 
     return (
       <React.Fragment>

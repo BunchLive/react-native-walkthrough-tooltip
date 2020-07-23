@@ -10,6 +10,9 @@ const styles = StyleSheet.create({
   containerVisible: {
     opacity: 1,
   },
+  containerHidden: {
+    opacity: 0,
+  },
   background: {
     ...StyleSheet.absoluteFillObject,
   },
@@ -36,7 +39,7 @@ const styles = StyleSheet.create({
   },
 });
 
-const arrowRotationForPlacement = placement => {
+const arrowRotationForPlacement = (placement) => {
   switch (placement) {
     case 'bottom':
       return '180deg';
@@ -128,14 +131,17 @@ const tooltipPlacementStyles = ({ arrowSize, placement, tooltipOrigin }) => {
   }
 };
 
-const styleGenerator = styleGeneratorProps => {
+const styleGenerator = (styleGeneratorProps) => {
   const {
     adjustedContentSize,
     displayInsets,
     measurementsFinished,
+    waitingForInteractions,
+    isMounted,
     ownProps,
     placement,
     topAdjustment,
+    tooltipOrigin,
   } = styleGeneratorProps;
 
   const { height, width } = adjustedContentSize;
@@ -174,13 +180,13 @@ const styleGenerator = styleGeneratorProps => {
     containerStyle: [
       styles.container,
       StyleSheet.compose(
-        adjustedContentSize.width !== 0 &&
-          measurementsFinished &&
-          styles.containerVisible,
+        isMounted && styles.containerVisible,
+        waitingForInteractions && styles.containerHidden,
+        tooltipOrigin.y === 0 && styles.containerHidden,
         topAdjustment !== 0 && {
           top: topAdjustment,
-        }
-      )
+        },
+      ),
     ],
     contentStyle,
     tooltipStyle: [
